@@ -1,15 +1,18 @@
 package io.wasabi.urg.elements.charm;
 
+import java.util.List;
+
 import com.badlogic.gdx.graphics.Color;
+
 import io.wasabi.urg.Roulette;
 import io.wasabi.urg.elements.game.Tile;
 import io.wasabi.urg.elements.tiles.TileType;
 import io.wasabi.urg.managers.SoundManager;
 import io.wasabi.urg.ui.FloatingText;
 
-import java.util.List;
+public class RedCharm extends Charm {
 
-public class RedCharm extends AbstractCharm {
+    private static final String ERROR_SOUND = "error";
 
     public RedCharm() {
         super();
@@ -20,6 +23,7 @@ public class RedCharm extends AbstractCharm {
     @Override
     public void consume() {
         if (requirements()) {
+            super.consume();
             List<Tile> selectedTiles = Roulette.getInstance().getRunState().getSelectedTiles();
             for (Tile tile : selectedTiles) {
                 tile.setColor(TileType.TileColour.RED);
@@ -34,17 +38,17 @@ public class RedCharm extends AbstractCharm {
     public boolean requirements() {
         if (Roulette.getInstance().getGameScreen().getWheel().isSpinning()) {
             Roulette.getInstance().getGameScreen().addParticle(new FloatingText("You cannot use charms while the wheel is spinning!", getX(), getY(), Color.RED, 1f));
-            SoundManager.getInstance().playSound("error");
+            SoundManager.getInstance().playSound(ERROR_SOUND);
             return false;
         }
 
         List<Tile> selectedTiles = Roulette.getInstance().getRunState().getSelectedTiles();
         if (selectedTiles.isEmpty()) {
             Roulette.getInstance().getGameScreen().addParticle(new FloatingText("Select at least one tile!", getX(), getY(), Color.RED, 1f));
-            SoundManager.getInstance().playSound("error");
+            SoundManager.getInstance().playSound(ERROR_SOUND);
         } else if (selectedTiles.size() > 2) {
             Roulette.getInstance().getGameScreen().addParticle(new FloatingText("You can only select up to two tiles!", getX(), getY(), Color.RED, 1f));
-            SoundManager.getInstance().playSound("error");
+            SoundManager.getInstance().playSound(ERROR_SOUND);
         } else {
             return true;
         }

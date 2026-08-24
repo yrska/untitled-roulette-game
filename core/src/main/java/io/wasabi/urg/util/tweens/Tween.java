@@ -1,3 +1,7 @@
+/*
+Refer to easings.net for the formulae!
+*/
+
 package io.wasabi.urg.util.tweens;
 
 import java.lang.reflect.InvocationTargetException;
@@ -70,6 +74,13 @@ public class Tween {
         }
     }
 
+    /**
+     * Linearly interpolates between two values based on a given alpha.
+     * @param a The starting value.
+     * @param b The ending value.
+     * @param t The interpolation factor (alpha), typically between 0 and 1.
+     * @return The interpolated value.
+     */
     private float lerp(float a, float b, float t) {
         return a * (1 - t) + b * t;
     }

@@ -1,6 +1,7 @@
 package io.wasabi.urg.elements.game;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +29,7 @@ import io.wasabi.urg.elements.betting.PocketColor;
 import io.wasabi.urg.elements.betting.TableLayoutGenerator;
 import io.wasabi.urg.managers.FontManager;
 import io.wasabi.urg.managers.RendererManager;
+import io.wasabi.urg.managers.SoundManager;
 import io.wasabi.urg.state.RunState;
 
 public class BettingTable extends GameObject {
@@ -35,7 +37,7 @@ public class BettingTable extends GameObject {
     private static final ShapeRenderer SHAPE_RENDERER = RENDERER_MANAGER.getShapeRenderer();
     private static final SpriteBatch SPRITE_BATCH = RENDERER_MANAGER.getSpriteBatch();
     private static final FontManager FONT_MANAGER = FontManager.getInstance();
-    private static final BitmapFont FONT = FONT_MANAGER.getFontByName("Placeholder");
+    private static final BitmapFont FONT = FONT_MANAGER.getFontByName("Terminus32PX");
 
     private static final float CHIP_RADIUS = 32f;
     private static final float CHIP_STACK_OFFSET = 10f;
@@ -149,6 +151,7 @@ public class BettingTable extends GameObject {
      * TableLayoutGenerator) list more than one covered tile for that single
      * number — losing one duplicate shouldn't drop the bet as long as another tile
      * with that number is still on the wheel.
+     * @param zone The bet zone to check for orphaned status.
      */
     private boolean isOrphaned(BetZone zone) {
         Map<Integer, Boolean> numberSurvives = new HashMap<>();
@@ -213,7 +216,9 @@ public class BettingTable extends GameObject {
         return nearest;
     }
 
-    /** Spawns a fresh chip for dragging — the tray itself is never depleted. */
+    /** Spawns a fresh chip for dragging — the tray itself is never depleted.
+     * @param denomination The denomination of the chip to spawn.
+    */
     public Chip beginDragFromTray(ChipDenomination denomination, Vector2 point) {
         Chip chip = new Chip(denomination, point.x, point.y, CHIP_RADIUS);
         chip.setDragging(true);
@@ -226,6 +231,7 @@ public class BettingTable extends GameObject {
      * deducted chips in the first place, see {@link #placeBet}. If the player drops
      * it back on a zone it's re-tracked there; if they drop it off the table it's
      * simply gone from {@link #activeBets}.
+     * @param chip The chip to pick up.
      */
     public Chip beginDragFromPlaced(Chip chip) {
         Bet bet = chip.getBet();
@@ -250,6 +256,8 @@ public class BettingTable extends GameObject {
      * — placing a bet here only ever reserves against the player's real balance
      * minus what's already reserved by other pending bets, it never mutates
      * {@link RunState#getChips()} itself.
+     * @param zone The bet zone to place the bet on.
+     * @param chip The chip representing the bet's denomination and stake.
      */
     public void placeBet(BetZone zone, Chip chip) {
         int balance = runState.getChips();
@@ -267,6 +275,8 @@ public class BettingTable extends GameObject {
         Bet bet = new Bet(zone, amount);
         chip.setBet(bet);
         chip.setDragging(false);
+
+        SoundManager.getInstance().playSound("chipPlace");
 
         int stackIndex = countChipsOnZone(zone);
         Vector2 anchor = zone.getChipAnchor();
@@ -294,6 +304,7 @@ public class BettingTable extends GameObject {
      * chips picked
      * up from an existing bet were already refunded in
      * {@link #beginDragFromPlaced}.
+     * @param chip The chip to discard.
      */
     public void discardChip(Chip chip) {
         chip.setDragging(false);
@@ -346,13 +357,9 @@ public class BettingTable extends GameObject {
         List<BetZone> outsideZones = outsideCategoryZones();
         List<BetZone> dozenZones = layout.getZonesOfType(BetType.DOZEN);
 
+        drawStraightZoneTextures(straightZones);
+
         SHAPE_RENDERER.begin(ShapeType.Filled);
-        for (BetZone zone : straightZones) {
-            Tile tile = zone.getCoveredTiles().get(0);
-            SHAPE_RENDERER.setColor(colorFor(generator.getColor(tile)));
-            Rectangle r = zone.getHitArea().getBoundingRectangle();
-            SHAPE_RENDERER.rect(r.x, r.y, r.width, r.height);
-        }
         for (BetZone zone : outsideZones) {
             SHAPE_RENDERER.setColor(colorForOutsideType(zone.getType()));
             Rectangle r = zone.getHitArea().getBoundingRectangle();
@@ -414,13 +421,82 @@ public class BettingTable extends GameObject {
     }
 
     /**
+     * Draws each straight zone's own tile texture, stretched to fill its cell —
+     * see {@link #pickStraightZoneTexture} for which tile represents the zone
+     * when its number is duplicated. Generic on purpose: whatever texture a tile
+     * reports (see {@link Tile#getTexture()}) is what gets drawn, so a new tile
+     * type never needs a new branch here to render correctly on the table.
+     * @param straightZones The list of straight zones to draw textures for.
+     */
+    private void drawStraightZoneTextures(List<BetZone> straightZones) {
+        SPRITE_BATCH.begin();
+        for (BetZone zone : straightZones) {
+            Rectangle r = zone.getHitArea().getBoundingRectangle();
+            Texture texture = pickStraightZoneTexture(zone);
+            SPRITE_BATCH.draw(texture, r.x, r.y, r.width, r.height);
+        }
+        SPRITE_BATCH.end();
+    }
+
+    /**
+     * Picks which of a straight zone's covered tiles (more than one when its
+     * number is duplicated, see TableLayoutGenerator's class javadoc) supplies
+     * the texture drawn for the whole zone:
+     * <ol>
+     * <li>If any covered tile is "special"
+     * {@link TableLayoutGenerator#getColor} returns {@link PocketColor#SPECIAL}),
+     * use the LATEST such tile (last one in the zone's covered-tile order, which
+     * follows tile-list order).</li>
+     * <li>Otherwise use whichever base colour (RED/BLACK/GREEN) has the most
+     * covered tiles, breaking ties by whichever colour reaches that count
+     * first.</li>
+     * </ol>
+     * This only affects the flat rectangle rendered on the table — it never
+     * changes which tiles the zone actually covers, so e.g. a red 8 and a black 8
+     * sharing this zone stay independently betable via the RED/BLACK outside
+     * zones (see TableLayoutGenerator#buildOutsideCategoryZones) regardless of
+     * which one's texture wins here.
+     * @param zone The straight bet zone to pick a texture for.
+     */
+    private Texture pickStraightZoneTexture(BetZone zone) {
+        List<Tile> covered = zone.getCoveredTiles();
+
+        Tile latestSpecial = null;
+        for (Tile tile : covered) {
+            if (generator.getColor(tile) == PocketColor.SPECIAL) {
+                latestSpecial = tile;
+            }
+        }
+        if (latestSpecial != null) {
+            return latestSpecial.getTexture();
+        }
+
+        Map<PocketColor, Integer> counts = new EnumMap<>(PocketColor.class);
+        Tile bestRepresentative = null;
+        int bestCount = 0;
+        for (Tile tile : covered) {
+            int count = counts.merge(generator.getColor(tile), 1, Integer::sum);
+            if (count > bestCount) {
+                bestCount = count;
+                bestRepresentative = tile;
+            }
+        }
+        if (bestRepresentative == null) {
+            throw new IllegalStateException("A straight betting zone must cover at least one tile");
+        }
+        return bestRepresentative.getTexture();
+    }
+
+    /**
      * Draws every straight zone's pocket number and every outside/dozen zone's
      * label, shrunk to fit and centered in their box. FONT is shared with other
-     * renderers (e.g. Tile, which draws with it at the default scale/color) —
-     * every tweak made here is saved beforehand and restored afterward so it can't
+     * renderers (e.g. Tile, which draws with it at the default scale/color).
+     * Every tweak made here is saved beforehand and restored afterward so it can't
      * leak into whatever draws with FONT next. All three groups share one
-     * SpriteBatch begin/end — changing the font's scale mid-batch is fine, it only
-     * affects the vertices of draws that come after it.
+     * SpriteBatch begin/end pair for efficiency, since they all draw with the same font and color.
+     * @param straightZones The list of straight zones to label.
+     * @param outsideZones The list of outside-category zones to label.
+     * @param dozenZones The list of "thirds" zones to label.
      */
     private void drawZoneLabels(List<BetZone> straightZones, List<BetZone> outsideZones,
             List<BetZone> dozenZones) {
@@ -475,6 +551,7 @@ public class BettingTable extends GameObject {
      * they cover (derived from the zone's own covered tiles) rather than a
      * hardcoded "1-18"/"19-36", since that range is rank-based and shifts as the
      * roguelike layer changes what numbers exist — see TableLayoutGenerator.
+     * @param zone The outside-category bet zone to get a label for.
      */
     private String outsideLabelFor(BetZone zone) {
         switch (zone.getType()) {
@@ -528,24 +605,10 @@ public class BettingTable extends GameObject {
         }
     }
 
-    private Color colorFor(PocketColor color) {
-        switch (color) {
-            case RED:
-                return Color.RED;
-            case BLACK:
-                return Color.BLACK;
-            case GREEN:
-                // Placeholder — matches the neutral fill used for outside/dozen zones for
-                // now (see colorForOutsideType).
-                return Color.FOREST;
-            default:
-                return Color.GRAY;
-        }
-    }
-
     /**
      * Returns the color to fill an outside-category zone with. RED/BLACK are
      * colored, everything else is dark green.
+     * @param type The outside-category bet type to get a color for.
      */
     private Color colorForOutsideType(BetType type) {
         switch (type) {
@@ -561,19 +624,19 @@ public class BettingTable extends GameObject {
     private Texture textureFor(ChipDenomination denomination) {
         switch (denomination) {
             case ONE:
-                return new Texture(Gdx.files.internal("chips/TEX_Chip_64x64_1White.png"));
+                return new Texture(Gdx.files.internal("chips/ChipWhite.png"));
             case FIVE:
-                return new Texture(Gdx.files.internal("chips/TEX_Chip_64x64_5Red.png"));
+                return new Texture(Gdx.files.internal("chips/ChipRed.png"));
             case TEN:
-                return new Texture(Gdx.files.internal("chips/TEX_Chip_64x64_10Green.png"));
+                return new Texture(Gdx.files.internal("chips/ChipGreen.png"));
             case TWENTY_FIVE:
-                return new Texture(Gdx.files.internal("chips/TEX_Chip_64x64_25Blue.png"));
+                return new Texture(Gdx.files.internal("chips/ChipBlue.png"));
             case FIFTY:
-                return new Texture(Gdx.files.internal("chips/TEX_Chip_64x64_50Black.png"));
+                return new Texture(Gdx.files.internal("chips/ChipBlack.png"));
             case HUNDRED:
-                return new Texture(Gdx.files.internal("chips/TEX_Chip_64x64_100Purple.png"));
+                return new Texture(Gdx.files.internal("chips/ChipPurple.png"));
             default:
-                return new Texture(Gdx.files.internal("chips/TEX_Chip_64x64_Default.png"));
+                return new Texture(Gdx.files.internal("chips/ChipDefault.png"));
         }
     }
 

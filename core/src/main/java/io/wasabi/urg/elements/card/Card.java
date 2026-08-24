@@ -2,8 +2,10 @@ package io.wasabi.urg.elements.card;
 
 import java.util.EnumMap;
 
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 
 import io.wasabi.urg.Roulette;
 import io.wasabi.urg.elements.GameObject;
@@ -18,29 +20,29 @@ import io.wasabi.urg.util.tweens.Tween;
 public abstract class Card extends GameObject {
 
     public enum Rarity {
-        // price in tickets
-        COMMON(10), UNCOMMON(15), RARE(20);
-
-        private final int price;
-
-        Rarity(int price) { this.price = price; }
-
-        public int getPrice() { return price; }
+        COMMON, UNCOMMON, RARE
     }
 
-    private static final EnumMap<Rarity, Integer> RARITY_COLOURS = new EnumMap<Rarity, Integer>(Rarity.class) {{
-        put(Rarity.COMMON, 0x007aabFF);
-        put(Rarity.UNCOMMON, 0x00a629FF);
-        put(Rarity.RARE, 0xa61300FF);
-    }};
+    private static final EnumMap<Rarity, Integer> RARITY_COLOURS = new EnumMap<Rarity, Integer>(Rarity.class);
+    static {
+        RARITY_COLOURS.put(Rarity.COMMON, 0x007aabFF);
+        RARITY_COLOURS.put(Rarity.UNCOMMON, 0x00a629FF);
+        RARITY_COLOURS.put(Rarity.RARE, 0xa61300FF);
+    }
+
+    protected int price = 4; // Default price for cards, can be overridden in subclasses
+    protected int sellPrice = 2; // Default sell price for cards, can be overridden in subclasses
 
     protected Rarity cardRarity;
     protected Tooltip tooltip = new Tooltip(0.5f, 1);
     private Texture sprite;
-    private float x, y;
-    private float width, height;
+    private float x;
+    private float y;
+    private float width;
+    private float height;
     private boolean dragging = false;
-    private float targetX, targetY;
+    private float targetX;
+    private float targetY;
     private boolean hasTarget = false;
 
     private Tween tweenX;
@@ -72,6 +74,7 @@ public abstract class Card extends GameObject {
     public void beforeSpinEffect() {}
     public void afterSpinEffect() {}
     public void roundEndEffect() {}
+    public void charmConsumedEffect() {}
     public float getPayoutMultiplier(Tile winningTile, int totalStaked, int chipBalance) { return 1f; }
     public int getAdditionalEffectTriggers() { return 0; }
     public int getEffectTriggerMultiplier() { return 1; }
@@ -98,7 +101,14 @@ public abstract class Card extends GameObject {
 
     @Override
     public void render() {
-        RendererManager.getInstance().getSpriteBatch().draw(sprite, x, y, width, height);
+        float mult = isDragging() ? 1.05f : 1.0f;
+        SpriteBatch spriteBatch = RendererManager.getInstance().getSpriteBatch();
+        spriteBatch.setColor(0, 0, 0, 0.3f);
+        spriteBatch.draw(sprite, x, y - (isDragging() ? 10 : 5), width, height);
+        spriteBatch.setColor(1, 1, 1, 1);
+        float nWidth = width * mult;
+        float nHeight = height * mult;
+        RendererManager.getInstance().getSpriteBatch().draw(sprite, x - width/2 * (mult - 1), y - height/2 * (mult - 1), nWidth, nHeight);
     }
 
     public boolean contains(float worldX, float worldY) {
@@ -129,8 +139,8 @@ public abstract class Card extends GameObject {
     public float getWidth() { return width; }
     public float getHeight() { return height; }
     public Rarity getRarity() { return cardRarity; }
-    public int getPrice() { return cardRarity.getPrice(); }
-    public int getSellPrice() { return getPrice() / 2; }
+    public int getPrice() { return price; }
+    public int getSellPrice() { return sellPrice; }
     public String getDisplayName() { return getClass().getSimpleName(); }
     public boolean isDragging() { return dragging; }
     public Tooltip getTooltip() { return tooltip; }
@@ -139,7 +149,7 @@ public abstract class Card extends GameObject {
         boolean wasDragging = this.dragging;
         this.dragging = dragging;
 
-        if (dragging == true) {
+        if (dragging) {
             tooltip.hide();
         } else {
             tooltip.show();

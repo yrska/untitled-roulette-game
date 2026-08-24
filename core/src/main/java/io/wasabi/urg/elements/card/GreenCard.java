@@ -9,13 +9,14 @@ public class GreenCard extends Card {
 
     public GreenCard() {
         super(Rarity.COMMON);
+        this.price = 3;
+        this.sellPrice = 1;
         tooltip.setTitle("Green Card");
         tooltip.setDescription("[GREEN]Green [BLACK]tiles give [RED]3x [BLACK]payout");
     }
 
     @Override
     public void roundStartEffect() {
-        System.out.println("GreenCard card effect triggered");
         triggerDisplay();
         List<Tile> tiles = Roulette.getInstance().getGameScreen().getWheel().getTiles();
         for (Tile tile : tiles) {

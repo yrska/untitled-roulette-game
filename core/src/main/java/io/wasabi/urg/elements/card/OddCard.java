@@ -9,13 +9,14 @@ public class OddCard extends Card {
 
     public OddCard() {
         super(Rarity.COMMON);
+        this.price = 3;
+        this.sellPrice = 1;
         tooltip.setTitle("Odd Card");
         tooltip.setDescription("Odd numbered tiles give [RED]1.5x[BLACK] payout");
     }
 
     @Override
     public void roundStartEffect() {
-        System.out.println("OddCard card effect triggered");
         triggerDisplay();
         List<Tile> tiles = Roulette.getInstance().getGameScreen().getWheel().getTiles();
         for (Tile tile : tiles) {

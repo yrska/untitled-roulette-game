@@ -6,7 +6,13 @@ public class Jackpot extends Card {
     private int lastCountedRound = -1;
     private boolean jackpotRound;
 
-    public Jackpot() { super(Rarity.COMMON); }
+    public Jackpot() {
+        super(Rarity.COMMON);
+        this.price = 4;
+        this.sellPrice = 2;
+        tooltip.setTitle("Jackpot");
+        tooltip.setDescription("Every 7th tile you score gives [RED]7x [BLACK]payout");
+    }
 
     @Override
     public void roundStartEffect() {
